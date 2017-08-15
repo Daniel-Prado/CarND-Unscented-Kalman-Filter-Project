@@ -38,7 +38,18 @@ int main()
   vector<VectorXd> estimations;
   vector<VectorXd> ground_truth;
 
-  h.onMessage([&ukf,&tools,&estimations,&ground_truth](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  // Output file for the NIS values
+  // The file will mix lidar and radar values if both sensors are used,
+  // so, for a correct evaluation, only one of the sensors should be used to evaluate it
+  // (see use_radar and use_lidar parameters in UKF)
+  string out_file_name = "nis_out.txt";
+  ofstream out_file_(out_file_name.c_str(), ofstream::out);
+  if (!out_file_.is_open()) {
+    cerr << "Cannot open output file: " << out_file_name << endl;
+    exit(EXIT_FAILURE);
+  }
+
+  h.onMessage([&ukf,&tools,&estimations,&ground_truth,&out_file_](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -90,7 +101,7 @@ int main()
           		iss >> timestamp;
           		meas_package.timestamp_ = timestamp;
           }
-          float x_gt;
+        float x_gt;
     	  float y_gt;
     	  float vx_gt;
     	  float vy_gt;
@@ -105,7 +116,7 @@ int main()
     	  gt_values(3) = vy_gt;
     	  ground_truth.push_back(gt_values);
           
-          //Call ProcessMeasurment(meas_package) for Kalman filter
+        //Call ProcessMeasurment(meas_package) for Kalman filter
     	  ukf.ProcessMeasurement(meas_package);    	  
 
     	  //Push the current estimated x,y positon from the Kalman filter's state vector
@@ -119,6 +130,14 @@ int main()
 
     	  double v1 = cos(yaw)*v;
     	  double v2 = sin(yaw)*v;
+
+        if (meas_package.sensor_type_ == MeasurementPackage::LASER
+          && ukf.use_laser_ == true) {
+            out_file_ << ukf.NIS_laser_ << std::endl;
+        } else if (meas_package.sensor_type_ == MeasurementPackage::RADAR
+          && ukf.use_radar_ == true) {
+          out_file_ << ukf.NIS_radar_ << std::endl;
+        }
 
     	  estimate(0) = p_x;
     	  estimate(1) = p_y;
@@ -185,6 +204,12 @@ int main()
     return -1;
   }
   h.run();
+
+  // close files
+  if (out_file_.is_open()) {
+    std:cout << "Closing output file" << std::endl;
+    out_file_.close();
+  }
 }
 
 
